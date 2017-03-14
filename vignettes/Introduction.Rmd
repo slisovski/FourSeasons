@@ -1,0 +1,94 @@
+---
+title: "R package: FourSeasons"
+author: "Simeon Lisovski"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{"R package: FourSeasons"}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+This 'R' Package contains the analytically tool set to derive major seasonal components as described in Lisovski et al. 2017^[Lisovski, Ramenofsky & Wingfield 2014 Defining the degree of seasonality and its significance for future research. _Integrative and Comperative Biology_.]. In particular, this package has two functions:
+
+* defineSeasons
+* AmpPred
+
+In the following paragraphs I aim to provide a short description in both functions based on a dataset of minimum and maximum temperature recordings from a weather station within the Yellowstone National Park.
+
+## **The dataset**
+
+Summary of daily minimum and maximum temperature recordings from the land based NOAA^[ https://www.ncdc.noaa.gov/data-access/land-based-station-data] weather station called _LAKE YELLOWSTONE_ was downloaded and included into this package as an example dataset.
+
+```{r, message=F, warning=F}
+library(FourSeasons)
+  data("tempYNP")
+
+tempYNP[1:5, c("Date", "Tmax", "Tmin")]
+```
+
+The dataset includes temperature recordings from the following period:
+
+```{r}
+range(tempYNP$Date)
+```
+
+
+## **defineSeasons**
+
+The first function - _defineSeasons_ - helps to define the periodicity within seasonal dataset (e.g. annual, bi-annual) that is later used to split periods, the e.g. annual cycle, and investigate them in isolation and in comparison to the other periods. In addition, the function uses tools to decompose the dataset into a seasonal, a trend and a remaining component that can be plotted and may be used for further investigations.
+
+The functions requires definition of the following arguments:
+
+* **tm**
+    + the timestamp of the observations. Needs to be a POSIXc or POSIXl class object (see: ?as.POSIXct).
+* **y**
+    + the observation (e.g. Tmin or Tmax of the Yellowstone dataset)
+* **frequency**
+    + the frequency of the observations; so far either 'daily', 'weekly' or 'monthly'.
+* **plot**
+    + logical, if TRUE a summary plot will be produced.
+
+Running the function usign _Tmax_ of the Yellowstone dataset.
+
+```{r, fig.height=5, fig.width=7}
+sTab <- defineSeasons(tempYNP$Date, tempYNP$Tmin, frequency = "daily")
+```
+
+The upper panel shows the raw data with grey points indicating interpolated values (nessesary for further analysis with _AmpPred_). The second panel shows the seasonal component of the dataset, wheareas the third indicades the trend component over time. The lower panel shows again the raw data (grey) and a fitted cosine function that is then used to split the time-series into consecutive seasonal periods. 
+
+The output provides a data frame with the following variables:
+
+```{r}
+head(sTab)
+```
+
+
+## **AmpPred**
+
+The _AmpPred_ function uses the data frame complied by the _defineSeason_ function and generates future predictions based on a subset of the dataset. Those predictions are then used to estimate the goodness of the predictions by calculating the R^2 between the predictions and the raw data. Furthermore, the function calcualtes the amplitude of the within seasonal dynamic.
+
+The function requires the definition of the following arguments:
+
+* **data**
+    + data.frame as produced by defineSeasons.
+* **info.periods**
+    + the number of periods used as prior inforamtion to generate predictions.
+* **forecast.period**
+    + the number of periods to be forecasted within each step.
+* **cuttoff**
+    + exlude incomplete periods (in the beginning and the end); the cuttoff defines a percetnage of the complete periods.
+* **amp.probs**
+    + the qunatiles used to define the seasonal amplitude.
+* **plot**
+    + logical, of TRUE a plot will be drawn.
+    
+```{r, fig.height=5, fig.width=7}
+seas <- AmpPred(sTab, info.periods = 4, forecast.periods = 1)
+```
+
+The output provies a list with a summary data frame as well as the entire forcasting data (2nd data frame).
+
+```{r}
+seas$summary[1:8,] ## First 8 rows of the summary output
+```
