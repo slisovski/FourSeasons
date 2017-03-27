@@ -34,17 +34,17 @@ defineSeasons <- function(tm, y, frequency = "daily", plot = TRUE) {
   }
 
   difft <- apply(cbind(tm[-length(tm)], tm[-1]), 1, function(x) (x[2] - x[1])/60/60/24)
-  freq  <- c(as.data.frame(table(difft))[order(as.data.frame(table(difft))[,2], decreasing = T),][1,1])
+  freq  <- as.numeric(as.character(as.data.frame(table(difft))[order(as.data.frame(table(difft))[,2], decreasing = T),1]))[1]
 
-  if((frequency=="daily" & freq!=1) | (frequency=="weekly" & !freq%in%c(6:7)) | (frequency=="monthly" & !freq%in%c(28:31))) {
+  if((frequency=="daily" & freq!=1) | (frequency=="weekly" & !freq%in%c(6:7)) | (frequency=="monthly" & !freq%in%c(28:33))) {
     stop(sprintf("The specified frequency does not fit the data."), call. = F)
   }
 
-  tmp   <- data.frame(date = seq(min(tm), max(tm), by = freq*24*60*60))
+  tmp   <- data.frame(date = seq(min(tm), max(tm), by = ifelse(frequency=="daily", "day", ifelse(frequency=="weekly", "week", "month"))))
     tmp$y <- merge(tmp, data.frame(date = tm, y = y), all.x = T)$y
     tmp$y <- na.approx(tmp$y, rule = 2)
 
-  f <- ifelse(frequency=="daily", 365, ifelse(frequency=="weekly", 52, 12))
+  f <- nrow(tmp)/ifelse(frequency=="daily", 365, ifelse(frequency=="weekly", 52, 12))
 
   ts <- ts(tmp$y, frequency = f,
            start = as.numeric(unlist(strsplit(format(tmp$date[1], "%Y %j"), " "))))
@@ -52,17 +52,18 @@ defineSeasons <- function(tm, y, frequency = "daily", plot = TRUE) {
 
   Mx <- fit$time.series[,1] - mean(fit$time.series[,1], na.rm = T)
 
-  fit0  <- optim(fn = leastS.cos, par = c(a = 50, b = 0, b = f), Mx = Mx, sd = 0.001)
-  curve <- fit0$par[1]*cos(pi*((1:length(Mx))/(length(Mx)/((length(Mx)/fit0$par[3])*2))) +
+  fit0  <- optim(fn = leastS.cos, par = c(a = 25, b = 0), f = f, Mx = Mx, sd = 0.001)
+  curve <- fit0$par[1]*cos(pi*((1:length(Mx))/(length(Mx)/((length(Mx)/f)*2))) +
                                (pi+fit0$par[2])) +  mean(fit$time.series[,1], na.rm=T)
-
+  
+  
   spl  <- which(diff(curve[-length(curve)])<0 & diff(curve[-1])>0) +1
   tmp3 <- split(data.frame(tmp), f = cut(1:nrow(tmp), breaks = c(0, spl, nrow(tmp))))
 
 
 
   out <- data.frame(date = tmp$date, y = tmp$y,
-                    period = unlist(sapply(cbind(1:length(tmp3)), function(x) rep(x[1], nrow(tmp3[[x[1]]])))),
+                    period = unlist(as.vector(sapply(1:length(tmp3), function(x) rep(x[1], nrow(tmp3[[x[1]]]))))),
                     seasonal = fit$time.series[,1],
                     trend    = fit$time.series[,2],
                     remainder = fit$time.series[,3],
@@ -153,8 +154,9 @@ AmpPred <- function(data, info.periods = 4, forecast.periods = 1, cuttoff = 70, 
 
   stopImplicitCluster()
 
-  out.summary <- data.frame(date.start = as.Date(aggregate(data$date, by = list(data$period), FUN = min)$x),
-                            date.end   = as.Date(aggregate(data$date, by = list(data$period), FUN = max)$x),
+  year <- aggregate(as.numeric(format(data$date, "%Y")), by = list(data$period), FUN = mean)$x[1]
+  
+  out.summary <- data.frame(mean.year  = round(year+c(0:(length(unique(data$period))-1)),0),
                             period     = unique(data$period),
                             amplitude  = c(aggregate(data$y, by = list(data$period), function(x) diff(quantile(x, rev(amp.probs))))$x),
                             predictability = fcy[match(unique(data$period), fcy[,1]),2])
@@ -178,6 +180,7 @@ AmpPred <- function(data, info.periods = 4, forecast.periods = 1, cuttoff = 70, 
     lines(out$date, out$c.ets.mean., col = "darkblue", lwd = 1)
     plot(out$date, out$y-out$c.ets.mean., type = "h", xlim = range(data$date),
          xaxt = "s", xlab = "", ylab = "Residuals")
+    par(opar)
   }
 
   return(list(summary = out.summary,
@@ -186,8 +189,8 @@ AmpPred <- function(data, info.periods = 4, forecast.periods = 1, cuttoff = 70, 
 
 
 ## Internal function
-leastS.cos <- function(params, Mx, sd = 0.001) {
-  fit  <- params[1]*cos(pi*((1: length(Mx))/(length(Mx)/((length(Mx)/params[3])*2))) + (pi+params[2]))
+leastS.cos <- function(params, f, Mx, sd = 0.001) {
+  fit  <- params[1]*cos(pi*((1: length(Mx))/(length(Mx)/((length(Mx)/f)*2))) + (pi+params[2]))
   -sum(dnorm(x= Mx[!is.na(Mx)], mean=fit[!is.na(Mx)], sd=sd, log=TRUE))
 }
 
