@@ -1,3 +1,81 @@
+##' Function that helps to check whether a time series has significant periodicity.
+##'
+##' @title Check for Periodicity in time series using wavelet analysis
+##' @param {tm} the time (date; as a POSIXlt or POSIXct class object) of the observation
+##' @param {y} the observations.
+##' ##' @param {frequency} the frequency of the observations; so far either 'daily', 'weekly' or 'monthly'.
+##' @param {plot} logical, if TRUE a plot will be produced.
+##' @return ...
+#' \describe{
+#'   \item{date}{...}
+#' }
+##' @author Simeon Lisovski
+##' @examples
+##' data(tempYNP)
+##' # sTab <- defineSeasons(tempYNP$Date, tempYNP$Tmin, frequency = "daily")
+##' @importFrom biwavelet wt
+##' @importFrom zoo na.approx
+##' @importFrom graphics plot lines abline axis
+##' @importFrom stats ts stl optim
+##' @export checkPeriodicity
+checkPeriodicity <- function(tm, y, frequency = "daily", plot = TRUE) {
+
+  if(!all(class(tm)%in%c("POSIXct", "POSIXt"))) {
+    stop(sprintf("Date must be provided as POSIXct class objects"), call. = F)
+  }
+
+  difft <- apply(cbind(tm[-length(tm)], tm[-1]), 1, function(x) (x[2] - x[1])/60/60/24)
+  freq  <- as.numeric(as.character(as.data.frame(table(round(difft,0)))[order(as.data.frame(table(round(difft,0)))[, 2], decreasing = T), ][1, 1]))
+  if((frequency=="daily" & freq!=1) | (frequency=="weekly" & !freq%in%c(6:7)) | (frequency=="monthly" & !freq%in%c(28:33))) {
+    stop(sprintf("The specified frequency does not fit the data."), call. = F)
+  }
+
+  tmp   <- data.frame(date = seq(min(tm), max(tm), by = ifelse(frequency=="daily", "day", ifelse(frequency=="weekly", "week", "month"))))
+  tmp$y <- merge(tmp, data.frame(date = tm, y = y), all.x = T)$y
+  tmp$y <- na.approx(tmp$y, rule = 2)
+
+  f    <- nrow(tmp)/ifelse(frequency=="daily", 365, ifelse(frequency=="weekly", 52, 12))
+  freq <- ifelse(frequency=="daily", 365, ifelse(frequency=="weekly", 52, 12))
+
+  wt  <- wt(cbind(1:length(y),y))
+  power  <- log2(wt$power.corr)
+
+  time   <- wt$t
+  period <- wt$period/
+
+  # tmp.pow <- apply(power[,-c(1:freq, (ncol(power)-(freq-1)):ncol(power))], 1, median, na.rm = T)
+  # tmp.sig <- apply(wt$signif[,-c(1:freq, (ncol(power)-(freq-1)):ncol(power))], 1, median, na.rm = T)
+  #
+  # plot(period, tmp.pow, type = "o")
+  # points(period, tmp.pow, pch = 16, col = ifelse(tmp.sig>1, "red", "grey90"))
+  #
+
+  if(plot) {
+
+    fill.cols <- c("#00007F", "blue", "#007FFF", "cyan",
+                   "#7FFF7F", "yellow", "#FF7F00", "red", "#7F0000")
+    col.pal <- colorRampPalette(fill.cols)
+
+    plot(wt, yaxt = "n")
+    axis(2, at = 1.5)
+
+
+
+
+    axis(2, at = c(1:dim(wt$power)[1])[c(TRUE, rep(FALSE, 5))], labels = c(round(wt$period/freq, 1))[c(TRUE, rep(FALSE, 5))], las = 1)
+
+  }
+
+  return(out)
+}
+
+
+
+
+
+
+
+
 ##' Function that helps to define the seasonality (periodicity) of the time-series.
 ##'
 ##' Based on time-series analysis, this function first decomposes the data into the following components; seasonal, trend and remainder.
@@ -34,8 +112,7 @@ defineSeasons <- function(tm, y, frequency = "daily", plot = TRUE) {
   }
 
   difft <- apply(cbind(tm[-length(tm)], tm[-1]), 1, function(x) (x[2] - x[1])/60/60/24)
-  freq  <- as.numeric(as.character(as.data.frame(table(difft))[order(as.data.frame(table(difft))[,2], decreasing = T),1]))[1]
-
+  freq  <- as.numeric(as.character(as.data.frame(table(round(difft,0)))[order(as.data.frame(table(round(difft,0)))[, 2], decreasing = T), ][1, 1]))
   if((frequency=="daily" & freq!=1) | (frequency=="weekly" & !freq%in%c(6:7)) | (frequency=="monthly" & !freq%in%c(28:33))) {
     stop(sprintf("The specified frequency does not fit the data."), call. = F)
   }
@@ -55,8 +132,8 @@ defineSeasons <- function(tm, y, frequency = "daily", plot = TRUE) {
   fit0  <- optim(fn = leastS.cos, par = c(a = 25, b = 0), f = f, Mx = Mx, sd = 0.001)
   curve <- fit0$par[1]*cos(pi*((1:length(Mx))/(length(Mx)/((length(Mx)/f)*2))) +
                                (pi+fit0$par[2])) +  mean(fit$time.series[,1], na.rm=T)
-  
-  
+
+
   spl  <- which(diff(curve[-length(curve)])<0 & diff(curve[-1])>0) +1
   tmp3 <- split(data.frame(tmp), f = cut(1:nrow(tmp), breaks = c(0, spl, nrow(tmp))))
 
@@ -155,7 +232,7 @@ AmpPred <- function(data, info.periods = 4, forecast.periods = 1, cuttoff = 70, 
   stopImplicitCluster()
 
   year <- aggregate(as.numeric(format(data$date, "%Y")), by = list(data$period), FUN = mean)$x[1]
-  
+
   out.summary <- data.frame(mean.year  = round(year+c(0:(length(unique(data$period))-1)),0),
                             period     = unique(data$period),
                             amplitude  = c(aggregate(data$y, by = list(data$period), function(x) diff(quantile(x, rev(amp.probs))))$x),
